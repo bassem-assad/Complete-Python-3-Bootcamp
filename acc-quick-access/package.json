@@ -1,0 +1,16 @@
+{
+  "name": "acc-quick-access",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Mobile PWA for quick access to Autodesk Construction Cloud data",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js"
+  },
+  "engines": { "node": ">=20" },
+  "dependencies": {
+    "express": "^4.21.0",
+    "express-session": "^1.18.0"
+  }
+}
