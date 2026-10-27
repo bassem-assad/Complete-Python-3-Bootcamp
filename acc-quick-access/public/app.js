@@ -71,12 +71,36 @@ async function showProjects(hub, canGoBack) {
   } catch (err) { showError(err); }
 }
 
+// ---- Folder browsing (single project) ----
+const fmtSize = n => n == null ? '' : n > 1048576 ? (n / 1048576).toFixed(1) + ' MB' : Math.max(1, Math.round(n / 1024)) + ' KB';
+const fmtDate = s => s ? new Date(s).toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric' }) : '';
+let trail = []; // [{id, name}] from the top folder down
+
+async function showFolder() {
+  const here = trail[trail.length - 1];
+  setHeader(here ? here.name : 'Project files', trail.length ? () => { trail.pop(); showFolder(); } : null);
+  view.innerHTML = '<p class="muted">Loading…</p>';
+  try {
+    const c = await api(here ? `/api/folders/${encodeURIComponent(here.id)}` : '/api/folders/top');
+    const crumbs = trail.length ? `<p class="muted">${trail.map(t => esc(t.name)).join(' / ')}</p>` : '';
+    view.innerHTML = crumbs + `<ul class="list">` +
+      c.folders.map(f => `<li><button data-folder="${esc(f.id)}" data-name="${esc(f.name)}">&#128193; ${esc(f.name)}</button></li>`).join('') +
+      c.files.map(f => `<li><button data-file="${esc(f.id)}">${esc(f.name)}<small>v${esc(f.version ?? '?')} · ${fmtSize(f.size)} · ${fmtDate(f.modified)}</small></button></li>`).join('') +
+      `</ul>` + (c.folders.length + c.files.length ? '' : '<p class="muted">Empty folder.</p>');
+    view.querySelector('ul').onclick = e => {
+      const b = e.target.closest('button[data-folder]');
+      if (b) { trail.push({ id: b.dataset.folder, name: b.dataset.name }); showFolder(); }
+    };
+  } catch (err) { showError(err); }
+}
+
 async function start() {
   try {
     const me = await fetch('/api/me', { credentials: 'same-origin' });
     if (!me.ok) return renderLogin();
     logoutBtn.hidden = false;
-    showHubs();
+    const info = await me.json();
+    if (info.config && info.config.projectId) { trail = []; showFolder(); } else showHubs();
   } catch { renderLogin(); }
 }
 

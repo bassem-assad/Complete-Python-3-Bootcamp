@@ -3,7 +3,7 @@
 Mobile-friendly installable web app (PWA) for fast access to Autodesk Construction Cloud (ACC).
 Users sign in as themselves (3-legged OAuth), so they only see what their ACC permissions allow.
 
-**Status:** step 1 of 7 (sign in, hubs, projects). See the build order in the project brief.
+**Status:** step 2 of 7 (sign in, single-project folder and file browsing). Set APS_HUB_ID and APS_PROJECT_ID in .env to lock the app to one project; leave them blank and it shows hubs and projects so you can find the IDs.
 
 ## 1. Create the APS app (once)
 1. Go to https://aps.autodesk.com/myapps and sign in. Click **Create application**.

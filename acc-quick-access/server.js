@@ -10,7 +10,7 @@ const session = require('express-session');
 
 const {
   APS_CLIENT_ID, APS_CLIENT_SECRET, APS_CALLBACK_URL, SESSION_SECRET,
-  PORT = 3000, NODE_ENV,
+  PORT = 3000, NODE_ENV, APS_HUB_ID, APS_PROJECT_ID,
 } = process.env;
 // Least privilege for now. Step 6 (reviews) will need data:write, so users will re-consent then.
 const APS_SCOPES = process.env.APS_SCOPES || 'data:read account:read user-profile:read';
@@ -147,7 +147,8 @@ const wrap = fn => (req, res) => fn(req, res).catch(err => {
 
 app.get('/api/me', (req, res) => {
   if (!req.session.tokens) return res.status(401).json({ error: 'Not signed in' });
-  res.json(req.session.user || {});
+  // hubId/projectId are set once the app is locked to a single project (see .env.example)
+  res.json({ ...(req.session.user || {}), config: { hubId: APS_HUB_ID || null, projectId: APS_PROJECT_ID || null } });
 });
 
 app.get('/api/hubs', wrap(async (req, res) => {
@@ -166,6 +167,42 @@ app.get('/api/hubs/:hubId/projects', wrap(async (req, res) => {
     name: p.attributes.name,
     type: p.attributes.extension && p.attributes.extension.type,
   })).sort((a, b) => a.name.localeCompare(b.name)));
+}));
+
+// Browsing is locked to the configured project, so users cannot wander into other projects through this app.
+// ACC still enforces each user's own folder permissions.
+function requireProject(req, res, next) {
+  if (!APS_HUB_ID || !APS_PROJECT_ID) return res.status(400).json({ error: 'APS_HUB_ID and APS_PROJECT_ID are not set on the server' });
+  next();
+}
+
+app.get('/api/folders/top', requireProject, wrap(async (req, res) => {
+  const folders = await apsGetAll(req, `/project/v1/hubs/${encodeURIComponent(APS_HUB_ID)}/projects/${encodeURIComponent(APS_PROJECT_ID)}/topFolders`);
+  res.json({ folders: folders.filter(f => !f.attributes.hidden).map(f => ({ id: f.id, name: f.attributes.displayName })), files: [] });
+}));
+
+app.get('/api/folders/:folderId', requireProject, wrap(async (req, res) => {
+  let url = `/data/v1/projects/${encodeURIComponent(APS_PROJECT_ID)}/folders/${encodeURIComponent(req.params.folderId)}/contents?page[limit]=200`;
+  const data = [], versions = {};
+  for (let i = 0; url && i < 50; i++) {
+    const page = await apsGet(req, url);
+    data.push(...(page.data || []));
+    for (const v of page.included || []) versions[v.id] = v;
+    url = page.links && page.links.next && page.links.next.href;
+  }
+  const folders = data.filter(d => d.type === 'folders' && !d.attributes.hidden)
+    .map(d => ({ id: d.id, name: d.attributes.displayName }));
+  const files = data.filter(d => d.type === 'items').map(d => {
+    const tip = versions[d.relationships?.tip?.data?.id];
+    return {
+      id: d.id, name: d.attributes.displayName,
+      version: tip && tip.attributes.versionNumber,
+      size: tip && tip.attributes.storageSize,
+      modified: tip && tip.attributes.lastModifiedTime,
+    };
+  });
+  const byName = (a, b) => a.name.localeCompare(b.name, undefined, { numeric: true });
+  res.json({ folders: folders.sort(byName), files: files.sort(byName) });
 }));
 
 // ---------- Front end ----------
